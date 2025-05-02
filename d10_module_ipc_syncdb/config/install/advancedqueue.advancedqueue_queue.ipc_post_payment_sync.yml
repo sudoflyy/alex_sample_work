@@ -1,0 +1,7 @@
+id: ipc_payment_post_sync
+label: 'IPC Payment Post Sync'
+backend: database
+backend_configuration: { }
+processor: daemon
+processing_time: 60
+locked: true

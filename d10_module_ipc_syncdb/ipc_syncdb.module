@@ -1,0 +1,47 @@
+<?php
+
+/**
+ * @file
+ * Contains ipc_syncdb.module.
+ */
+
+/**
+ * Implements hook_user_login().
+ */
+function ipc_syncdb_user_login($account) {
+  try {
+    $test_suite_running = \Drupal::service('state')->get('testSuite.behat.state', '') === 'running_import';
+    // Skip user import during behat tests running. To prevent requests for non exist users.
+    if (!$test_suite_running) {
+      $user_importer = \Drupal::service('ipc_syncdb.user_importer');
+      $user_importer->importUserByEmail($account->getEmail());
+    }
+  }
+  catch (\Exception $e) {
+    \Drupal::logger('ipc_syncdb')->error(t('User Importer - encountered exception: @message', [
+      '@message' => $e->getMessage(),
+    ]));
+  }
+}
+
+/**
+ * Implements hook_module_implements_alter().
+ *
+ * Move the commerce_cart user login action to last so the current cart is
+ * assigned to the user after the price levels have been set.
+ */
+function ipc_syncdb_module_implements_alter(&$implementations, $hook) {
+  if ($hook == 'user_login' && isset($implementations['commerce_cart'])) {
+    $commerce_cart = $implementations['commerce_cart'];
+    unset($implementations['commerce_cart']);
+    $implementations['commerce_cart'] = $commerce_cart;
+  }
+}
+
+/**
+ * Implements hook_menu_links_discovered_alter().
+ */
+function ipc_syncdb_menu_links_discovered_alter(&$links) {
+  // Remove link for the overridden IPCSync Settings form.
+  unset($links['ipcsync.settings']);
+}

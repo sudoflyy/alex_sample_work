@@ -1,0 +1,314 @@
+<?php
+
+/**
+ * @file
+ * Contains install and update functions for IPC SyncDB module.
+ */
+
+use Drupal\advancedqueue\Job;
+use Drupal\commerce_price\Price;
+use Drupal\commerce_product\Entity\Product;
+use Drupal\commerce_product\Entity\ProductVariation;
+use Drupal\Core\Database\Database;
+use Drupal\Core\Site\Settings;
+
+/**
+ * Remove quote items if they reference the wrong Invoice ID.
+ */
+function ipc_syncdb_update_8101(&$sandbox) {
+  $invoice_storage = \Drupal::service('entity_type.manager')
+    ->getStorage('commerce_invoice');
+
+  if (!isset($sandbox['total'])) {
+    $results = \Drupal::entityQuery('commerce_invoice')
+      ->condition('type', 'quote')
+      ->execute();
+
+    $sandbox['total'] = count($results);
+    $sandbox['current'] = 0;
+
+    if (empty($sandbox['total'])) {
+      $sandbox['#finished'] = 1;
+      return;
+    }
+  }
+
+  $quotes_per_batch = 25;
+  $quote_ids = \Drupal::entityQuery('commerce_invoice')
+    ->condition('type', 'quote')
+    ->range($sandbox['current'], $quotes_per_batch)
+    ->execute();
+  if (empty($quote_ids)) {
+    $sandbox['#finished'] = 1;
+    return;
+  }
+
+  foreach ($quote_ids as $quote_id) {
+    $quote = $invoice_storage->load($quote_id);
+
+    // Only process Quotes that have a 'syncdb_id' value set.
+    $transaction_id = $quote->get('syncdb_id')->value;
+    if ($transaction_id) {
+      $add_quote_to_import_queue = FALSE;
+
+      /** @var \Drupal\Core\Field\EntityReferenceFieldItemList $quote_invoice_item_list */
+      $quote_invoice_item_list = $quote->get('invoice_items');
+      /** @var \Drupal\commerce_invoice\Entity\InvoiceItemInterface[] $quote_items */
+      $quote_items = $quote_invoice_item_list->referencedEntities();
+
+      // Remove quote items if they reference the wrong invoice.
+      foreach ($quote_items as $quote_item) {
+        $invoice_id = $quote_item->getInvoiceId();
+        if ($invoice_id === NULL || $invoice_id != $quote->id()) {
+          $quote->removeItem($quote_item);
+          $add_quote_to_import_queue = TRUE;
+        }
+      }
+      if ($add_quote_to_import_queue) {
+        $queue_storage = \Drupal::service('entity_type.manager')
+          ->getStorage('advancedqueue_queue');
+        /** @var \Drupal\advancedqueue\Entity\QueueInterface $queue */
+        $queue = $queue_storage->load('ipc_order_sync');
+        $order_sync_job = Job::create('ipc_syncdb_order_get_transaction', [
+          'order_id' => NULL,
+          'transaction_id' => $transaction_id,
+        ]);
+        $queue->enqueueJob($order_sync_job);
+      }
+    }
+    $sandbox['current']++;
+  }
+
+  if ($sandbox['current'] >= $sandbox['total']) {
+    $sandbox['#finished'] = 1;
+  }
+  else {
+    $sandbox['#finished'] = ($sandbox['current'] / $sandbox['total']);
+  }
+}
+
+/**
+ * Import major configuration before main config import.
+ */
+function ipc_syncdb_update_9001() {
+  $config_path = Settings::get('config_sync_directory');
+
+  $config_paths = [
+    $config_path => [
+      'commerce_order_item_type' => [
+        'commerce_order.commerce_order_item_type.retail_delivery_fee',
+      ],
+      'commerce_product_type' => [
+        'commerce_product.commerce_product_type.retail_delivery_fee',
+      ],
+      'commerce_product_variation_type' => [
+        'commerce_product.commerce_product_variation_type.retail_delivery_fee',
+      ],
+      'field_storage_config' => [
+        'field.storage.commerce_product_variation.administrative_area',
+      ],
+      'field_config' => [
+        'field.field.commerce_product_variation.retail_delivery_fee.administrative_area',
+        'field.field.commerce_product_variation.retail_delivery_fee.netsuite_id',
+        'field.field.commerce_product_variation.retail_delivery_fee.syncdb_id',
+      ],
+    ],
+  ];
+
+  ipc_commerce_import_multiple_config($config_paths);
+}
+
+/**
+ * Created Product and Variation for Colorado RDF.
+ */
+function ipc_syncdb_update_9002() {
+  // Here we need to add Product and Product Variation for Colorado.
+  $colorado_variation = ProductVariation::create([
+    'type' => 'retail_delivery_fee',
+    'title' => t('Colorado Retail Delivery Fee'),
+    'sku' => 'OTH-CO-RDF',
+    'price' => new Price('00.00', 'USD'),
+    'netsuite_id' => '12391',
+    'syncdb_id' => '7588',
+    'administrative_area' => 'CO',
+    'avatax_tax_code' => 'OF400000',
+  ]);
+  $colorado_variation->save();
+
+  $product = Product::create([
+    'type' => 'retail_delivery_fee',
+    'title' => t('Retail Delivery Fee'),
+    'variations' => [$colorado_variation],
+    'status' => 0,
+  ]);
+  $product->save();
+
+  $product->addVariation($colorado_variation);
+  $product->save();
+}
+
+/**
+ * Populate the label field for existing ipc_revisions terms.
+ */
+function ipc_syncdb_update_9003() {
+  $machine_name = 'ipc_revisions';
+  $terms = \Drupal::entityTypeManager()->getStorage('taxonomy_term')
+    ->loadByProperties(['vid' => $machine_name]);
+
+  foreach ($terms as $term) {
+    // Set ipc_revisions label.
+    if (is_null($term->get('label')->value)) {
+      $label = $term->getName();
+      if ($label == '0') {
+        $label = 'Original Version';
+      }
+      $term->set('label', $label);
+      $term->save();
+    }
+  }
+}
+
+/**
+ * Remove terms from revisions.
+ */
+function ipc_syncdb_update_9401() {
+  $machine_name = 'revisions';
+
+  $term_storage = \Drupal::entityTypeManager()->getStorage('taxonomy_term');
+  $terms = $term_storage->loadByProperties(['vid' => $machine_name]);
+
+  $term_storage->delete($terms);
+}
+
+/**
+ * Remove terms from products_and_services.
+ */
+function ipc_syncdb_update_9402() {
+  $machine_name = 'products_and_services';
+
+  $term_storage = \Drupal::entityTypeManager()->getStorage('taxonomy_term');
+  $terms = $term_storage->loadByProperties(['vid' => $machine_name]);
+
+  $term_storage->delete($terms);
+}
+
+/**
+ * Remove terms from product_variety.
+ */
+function ipc_syncdb_update_9403() {
+  $machine_name = 'product_variety';
+
+  $term_storage = \Drupal::entityTypeManager()->getStorage('taxonomy_term');
+  $terms = $term_storage->loadByProperties(['vid' => $machine_name]);
+
+  $term_storage->delete($terms);
+}
+
+/**
+ * Remove terms from product_types.
+ */
+function ipc_syncdb_update_9404() {
+  $machine_name = 'product_types';
+
+  $term_storage = \Drupal::entityTypeManager()->getStorage('taxonomy_term');
+  $terms = $term_storage->loadByProperties(['vid' => $machine_name]);
+
+  $term_storage->delete($terms);
+}
+
+/**
+ * Remove terms from industry_segments.
+ */
+function ipc_syncdb_update_9405() {
+  $machine_name = 'industry_segments';
+
+  $term_storage = \Drupal::entityTypeManager()->getStorage('taxonomy_term');
+  $terms = $term_storage->loadByProperties(['vid' => $machine_name]);
+
+  $term_storage->delete($terms);
+}
+
+/**
+ * Remove terms from document_numbers.
+ */
+function ipc_syncdb_update_9406() {
+  $machine_name = 'document_numbers';
+
+  $term_storage = \Drupal::entityTypeManager()->getStorage('taxonomy_term');
+  $terms = $term_storage->loadByProperties(['vid' => $machine_name]);
+
+  $term_storage->delete($terms);
+}
+
+/**
+ * Create advanced queue index on the payload field.
+ */
+function ipc_syncdb_update_9407() {
+  $module_handler = \Drupal::moduleHandler();
+  $module_handler->loadInclude('advancedqueue', 'install', 'advancedqueue');
+  $spec = advancedqueue_schema();
+  $schema = Database::getConnection()->schema();
+  if (!$schema->indexExists('advancedqueue', 'payload')) {
+    $schema->addIndex('advancedqueue', 'payload', [
+      [
+        'payload',
+        128,
+      ],
+    ], $spec['advancedqueue']);
+  }
+}
+
+/**
+ * Update orders.
+ */
+function ipc_syncdb_update_9409(&$sandbox) {
+  $count = \Drupal::database()
+    ->update('commerce_order')
+    ->expression('order_number', 'CONCAT(:prefix, order_number)', [':prefix' => 'CF-'])
+    ->condition('type', ['default', 'quote_purchase'] , 'IN')
+    ->isNotNull('order_number')
+    ->condition('order_number', 'CF-%', 'NOT LIKE')
+    ->execute();
+
+    drupal_flush_all_caches();
+}
+
+/**
+ * Update quotes.
+ */
+function ipc_syncdb_update_9410(&$sandbox) {
+  $count = \Drupal::database()
+    ->update('commerce_invoice_field_data')
+    ->expression('invoice_number', 'CONCAT(:prefix, invoice_number)', [':prefix' => 'QT-'])
+    ->condition('type', 'quote')
+    ->isNotNull('invoice_number')
+    ->condition('invoice_number', 'QT-%', 'NOT LIKE')
+    ->execute();
+
+    drupal_flush_all_caches();
+
+}
+
+/**
+ * Update files with additional space.
+ */
+function ipc_syncdb_update_9411(&$sandbox) {
+  $count = \Drupal::database()
+    ->update('file_managed')
+    ->fields([
+      'filename' => 'IPC-7351B-German_DRM.zip',
+    ])
+    ->condition('fid', 3491)
+    ->execute();
+
+  $count = \Drupal::database()
+    ->update('file_managed')
+    ->fields([
+      'filename' => 'IPC-1752A-Am-3-Schema.xsd',
+    ])
+    ->condition('fid', 1409)
+    ->execute();
+
+    drupal_flush_all_caches();
+
+}

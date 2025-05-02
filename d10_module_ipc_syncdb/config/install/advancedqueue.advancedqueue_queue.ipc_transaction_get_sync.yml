@@ -1,0 +1,7 @@
+id: ipc_transaction_get_sync
+label: 'IPC Transactions Get Sync'
+backend: database
+backend_configuration: { }
+processor: daemon
+processing_time: 60
+locked: true

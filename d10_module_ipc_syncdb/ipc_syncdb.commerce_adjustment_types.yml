@@ -1,0 +1,20 @@
+handling_fee:
+  label: 'Handling fee'
+  singular_label: 'handling fee'
+  plural_label: 'handling fees'
+  has_ui: true
+  weight: 90
+
+ipc_discount:
+  label: 'Ipc discount'
+  singular_label: 'ipc discount'
+  plural_label: 'ipc discounts'
+  has_ui: true
+  weight: 100
+
+ipc_transaction_discount:
+  label: 'Ipc transaction discount'
+  singular_label: 'ipc transaction discount'
+  plural_label: 'ipc transaction discounts'
+  has_ui: true
+  weight: 100
