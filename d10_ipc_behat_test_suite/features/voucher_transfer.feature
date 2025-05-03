@@ -17,8 +17,7 @@ Feature: Test Voucher Transfer
     And I view the existing vouchers for course "TEST_PRODUCT_3"
     And I verify that the data in View Vouchers modal is correct for course "TEST_PRODUCT_3"
     When I transfer a voucher to the user who is the object of the operation "DND-VTRFR"
-    # todo Figure out why the success message is not properly read (race condition?)
-    #Then A success message is displayed in the SnackBar
+    Then A success message is displayed in the SnackBar
     And I run drush "advancedqueue:queue:process" "ipc_enrollment_sync"
     When I close the Vouchers modal
     And I log out from IPC Edge

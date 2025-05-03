@@ -16,7 +16,6 @@ Feature: Test Data Tables (Filters, Paging, Ordering)
     And I navigate to My Dashboard
     And I navigate to the My Vouchers page
     And I verify that ordering works for the results on the page
-    # @todo Uncomment the lines below once we have a setup function to buy 26 vouchers
-    #And I navigate to My Dashboard
-    #And I navigate to the My Vouchers page
-    #And I verify that paging works for the results on the page
+    And I navigate to My Dashboard
+    And I navigate to the My Vouchers page
+    And I verify that paging works for the results on the page
