@@ -18,11 +18,10 @@ Feature: Test Voucher Enroll
     Then I verify that the data in Enroll Students modal is correct for course "TEST_PRODUCT_3"
     When I assign a voucher to the user who is the object of the operation "DND-VENRL"
     Then An Enrollment Success modal is displayed
-    # The steps below are commented out until the bug that makes them fail is fixed.
-    #And I view the existing vouchers for course "TEST_PRODUCT_3"
-    #And I press the "Enroll Students" button
-    #And I verify that attempting to enroll the "DND-VENRL" user twice results in an error
-    #And I close the Vouchers modal
+    And I view the existing vouchers for course "TEST_PRODUCT_3"
+    And I press the "Enroll Students" button
+    And I verify that attempting to enroll the "DND-VENRL" user twice results in an error
+    And I close the Vouchers modal
     And I run drush "advancedqueue:queue:process" "ipc_enrollment_sync"
     And I log in as the user who is the object of the operation "DND-VENRL"
     And I navigate to My Dashboard

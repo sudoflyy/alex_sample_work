@@ -231,7 +231,7 @@ class FeatureContext extends BaseContext
       throw new \Exception(sprintf("View Voucher modal has incorrect data for course %s", $course['VOUCHER_TITLE']));
     }
 
-    /*$verified = FALSE;
+    $verified = FALSE;
     $pos = strpos($voucher_info_text, 'Available Vouchers:');
     if ($pos !== FALSE) {
       $number_vouchers_available = $this->extractAmountOfAvailableVouchers($voucher_info_text);
@@ -242,7 +242,7 @@ class FeatureContext extends BaseContext
     }
     if (!$verified) {
       throw new \Exception(sprintf("View Voucher modal has incorrect data for course %s", $course['VOUCHER_TITLE']));
-    }*/
+    }
   }
 
   /**

@@ -1,2 +1,0 @@
-export_orders_to_syncdb: true
-import_orders_from_syncdb: true
